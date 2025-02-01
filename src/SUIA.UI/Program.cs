@@ -20,6 +20,6 @@ builder.Services.AddScoped<AuthenticationStateProvider, SUIAAuthenticationStateP
 builder.Services.AddScoped<IAPIService, APIService>();
 builder.Services.AddScoped(_ => new Settings(settings!.ApiEndpoint));
 
-builder.Services.AddSysinfocus();
+builder.Services.AddSysinfocus("",false);
 
 await builder.Build().RunAsync();
