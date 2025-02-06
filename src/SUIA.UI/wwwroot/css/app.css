@@ -10,6 +10,11 @@
     flex-direction: column;    
 }
 
+.custom-colors{
+    --btn-primary-bg: green !important;
+    --btn-primary-fg: white !important;
+}
+
 a {
     text-decoration: none;
     transition: 300ms ease-in-out
