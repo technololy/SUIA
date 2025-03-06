@@ -7,6 +7,7 @@ using Microsoft.IdentityModel.Tokens;
 using SUIA.API.Contracts;
 using SUIA.API.Data;
 using SUIA.Shared.Models;
+using SUIA.Shared.Utilities;
 
 namespace SUIA.API.Endpoints;
 
@@ -26,32 +27,36 @@ public sealed class UsersEndpoint(IUserService service) : IEndpoints
         group.MapPut("/changePassword/{id}", UpdatePassword);
 
         group.MapDelete("/{id}", DeleteUser);
-        // New Authentication Endpoints
+        
+        // ✅ Authentication Endpoints
         group.MapPost("/auth/login", LoginUser).AllowAnonymous();
         group.MapPost("/auth/register", RegisterUser).AllowAnonymous();
     }
 
     private async Task<IResult> GetAllUsers(CancellationToken cancellationToken)
-        => Results.Ok(await service.GetAll(cancellationToken));
+    {
+        var users = await service.GetAll(cancellationToken);
+        return Results.Ok(Response.CreateSuccessResult(users, "Users retrieved successfully"));
+    }
 
     private async Task<IResult> GetUser(string id, CancellationToken cancellationToken)
     {
-        var user = await service.GetById(id, cancellationToken);        
-        if (user is null) return Results.NotFound();
-        return Results.Ok(user);
+        var user = await service.GetById(id, cancellationToken);
+        if (user is null) return Results.NotFound(Response.CreateFailureResult<bool>("User not found"));
+        return Results.Ok(Response.CreateSuccessResult(user, "User retrieved successfully"));
     }
 
     private async Task<IResult> GetUserClaims(ClaimsPrincipal user, CancellationToken cancellationToken)
     {
         var claims = await service.GetUserClaims(user, cancellationToken);
         if (string.IsNullOrEmpty(claims)) return Results.Unauthorized();
-        return Results.Content(claims);        
+        return Results.Ok(Response.CreateSuccessResult(claims, "Claims retrieved successfully"));
     }
 
     private async Task<IResult> LogoutUser(SignInManager<ApplicationUser> signInManager, CancellationToken cancellationToken)
     {
         await signInManager.SignOutAsync();
-        return Results.Ok();
+        return Results.Ok(Response.CreateSuccessResult(true, "User logged out successfully"));
     }
 
     private async Task CreateUser(CancellationToken cancellationToken)
@@ -62,25 +67,29 @@ public sealed class UsersEndpoint(IUserService service) : IEndpoints
     private async Task<IResult> UpdateUser(string id, UserDto model, CancellationToken cancellationToken)
     {
         var result = await service.UpdateById(id, model, cancellationToken);
-        if (result) return Results.NoContent();
-        return Results.BadRequest("Failed to update user.");
+        if (!result) return Results.BadRequest(Response.CreateFailureResult("Failed to update user"));
+        return Results.Ok(Response.CreateSuccessResult(result, "User updated successfully"));
     }
 
     private async Task<IResult> UpdatePassword(string id, ChangePasswordRequestDto request, ApplicationDbContext adbc, UserManager<ApplicationUser> userManager, CancellationToken cancellationToken)
     {
         var user = await adbc.Users.FindAsync([id], cancellationToken: cancellationToken);
-        if (user is null) return Results.NotFound();        
+        if (user is null) return Results.NotFound(Response.CreateFailureResult("User not found"));
+
         var result = await userManager.ChangePasswordAsync(user, request.CurrentPassword, request.NewPassword);
-        if (result.Errors.Any()) return Results.Problem(result.Errors.First().Description, statusCode: 400, title: "Change password failed");
-        return Results.NoContent();
+        if (result.Errors.Any()) 
+            return Results.Problem(Response.CreateFailureResult(result.Errors.First().Description).Message, statusCode: 400, title: "Change password failed");
+        
+        return Results.Ok(Response.CreateSuccessResult(true, "Password updated successfully"));
     }
 
     private async Task<IResult> DeleteUser(string id, CancellationToken cancellationToken)
     {
         var result = await service.DeleteById(id, cancellationToken);
-        if (result) return Results.NoContent();
-        return Results.BadRequest("Failed to delete user.");
+        if (!result) return Results.BadRequest(Response.CreateFailureResult("Failed to delete user"));
+        return Results.Ok(Response.CreateSuccessResult(result, "User deleted successfully"));
     }
+
     private static async Task<IResult> LoginUser(
         [FromBody] LoginRequestDto model,
         [FromServices] UserManager<ApplicationUser> userManager,
@@ -89,23 +98,29 @@ public sealed class UsersEndpoint(IUserService service) : IEndpoints
         HttpContext httpContext)    
     {
         var user = await userManager.FindByEmailAsync(model.Email);
-        if (user is null) return Results.BadRequest(new { Message = "Invalid email or password." });
+        if (user is null) return Results.BadRequest(Response.CreateFailureResult("Invalid email or password"));
 
         var result = await signInManager.PasswordSignInAsync(user, model.Password, false, false);
-        if (!result.Succeeded) return Results.BadRequest(new { Message = "Invalid login attempt." });
+        if (!result.Succeeded) return Results.BadRequest(Response.CreateFailureResult("Invalid login attempt"));
 
+        // ✅ Retrieve user roles
+        var roles = await userManager.GetRolesAsync(user);
         // ✅ Retrieve claims
         var userClaims = await userManager.GetClaimsAsync(user);
         var claimsList = userClaims.Select(c => $"{c.Type}:{c.Value}").ToList();
+        // ✅ Add role claims
+        foreach (var role in roles)
+        {
+            userClaims.Add(new Claim(ClaimTypes.Role, role));  // ✅ Add roles to claims
+            claimsList.Add($"{ClaimTypes.Role}:{role}");
+        }
 
         var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(config["Jwt:Secret"]));
         var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
         var apiHost = $"{httpContext.Request.Scheme}://{httpContext.Request.Host}";
 
         var token = new JwtSecurityToken(
-            //issuer: config["Jwt:Issuer"],
             issuer: apiHost,
-            //audience: config["Jwt:Audience"],
             audience: apiHost,
             claims: userClaims,
             expires: DateTime.UtcNow.AddHours(1),
@@ -116,20 +131,12 @@ public sealed class UsersEndpoint(IUserService service) : IEndpoints
 
         var response = new LoginResponseDto("Bearer", tokenString, 3600, "refresh_token_placeholder")
         {
-            Claims = string.Join(",", claimsList) // ✅ Send claims as a string
+            Claims = string.Join(",", claimsList)
         };
 
-        return Results.Ok(CreateSuccessResult(response, "Login successful."));
-    }
-    private static ApiResults<T> CreateSuccessResult<T>(T data, string message = "Success")
-    {
-        return new ApiResults<T>(System.Net.HttpStatusCode.OK, data, message);
+        return Results.Ok(Response.CreateSuccessResult(response, "Login successful"));
     }
 
-    private static ApiResults<T> CreateFailureResult<T>(string message)
-    {
-        return new ApiResults<T>(System.Net.HttpStatusCode.BadRequest, default, message);
-    }
     private async Task<IResult> RegisterUser(
         [FromBody] RegisterModel model,
         [FromServices] UserManager<ApplicationUser> userManager)
@@ -144,7 +151,7 @@ public sealed class UsersEndpoint(IUserService service) : IEndpoints
         };
 
         var result = await userManager.CreateAsync(user, model.Password);
-        if (!result.Succeeded) return Results.BadRequest(result.Errors);
+        if (!result.Succeeded) return Results.BadRequest(Response.CreateFailureResult("User registration failed"));
 
         // Add user claims
         var claims = new List<Claim>
@@ -157,6 +164,8 @@ public sealed class UsersEndpoint(IUserService service) : IEndpoints
 
         await userManager.AddClaimsAsync(user, claims);
 
-        return Results.Ok(new { Message = "User registered successfully" });
+        return Results.Ok(Response.CreateSuccessResult(true, "User registered successfully"));
     }
+
+
 }

@@ -30,14 +30,18 @@ public class SUIAAuthenticationStateProvider(IJSRuntime jSRuntime, NavigationMan
         //if (await ValidateUser() == false) return new AuthenticationState(new ClaimsPrincipal(identity));
 
         identity = new ClaimsIdentity(
-        [
-            new Claim(ClaimTypes.NameIdentifier, userClaims.Id),
-            new Claim(ClaimTypes.Name, userClaims.UserName),
-            new Claim(ClaimTypes.Email, userClaims.Email),
-            new Claim(ClaimTypes.Role, userClaims.Roles ?? ""),
-            new Claim("IsAdmin", userClaims.Roles == "Admin" ? "true" : "false"),
-        ],
-        "SUIA Authentication");
+            new[]
+                {
+                    new Claim(ClaimTypes.NameIdentifier, userClaims.Id),
+                    new Claim(ClaimTypes.Name, userClaims.UserName),
+                    new Claim(ClaimTypes.Email, userClaims.Email),
+                }
+                .Concat(userClaims.Roles.Select(role => new Claim(ClaimTypes.Role, role))) // ✅ Correct Concat usage
+                .Concat([
+                    new Claim("IsAdmin", userClaims.Roles.Contains("Admin") ? "true" : "false")
+                ]),
+            "SUIA Authentication"
+        );
         var user = new ClaimsPrincipal(identity);
         stateManager.Publish("User", user);
         return new AuthenticationState(user);

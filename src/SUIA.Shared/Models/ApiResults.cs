@@ -7,3 +7,4 @@ public record ApiResults<TOutput>(HttpStatusCode StatusCode, TOutput? Data, stri
     public bool IsSuccess => ((int)StatusCode) >= 200 && ((int)StatusCode) < 300;
     public ValidationProblem? Errors { get; set; }
 };
+

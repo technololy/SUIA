@@ -17,10 +17,10 @@ builder.Services.AddSwaggerGen();
 var connection = GetConnectionString();
 
 builder.Services.AddEntityFrameworkNpgsql()
-    .AddDbContext<ApplicationDbContext>(opt => 
+    .AddDbContext<ApplicationDbContext>(opt =>
         {
-            opt.UseNpgsql(connection); 
-            opt.EnableSensitiveDataLogging(); 
+            opt.UseNpgsql(connection);
+            opt.EnableSensitiveDataLogging();
         }
     );
 
@@ -29,7 +29,7 @@ builder.Services.AddIdentityApiEndpoints<ApplicationUser>()
     .AddEntityFrameworkStores<ApplicationDbContext>();
 
 
-    // ✅ Get the running domain dynamically
+// ✅ Get the running domain dynamically
 var jwtConfig = builder.Configuration.GetSection("Jwt");
 var apiHost = "";
 if (Debugger.IsAttached)
@@ -38,11 +38,9 @@ if (Debugger.IsAttached)
 }
 else if (builder.Environment.IsDevelopment())
 {
-    
 }
 else if (builder.Environment.IsProduction())
 {
-    
 }
 
 // ✅ Configure JWT Authentication
@@ -57,7 +55,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             ValidateAudience = true,
             ValidateLifetime = true,
             ValidateIssuerSigningKey = true,
-            ValidIssuer = apiHost,  // ✅ Set Issuer dynamically
+            ValidIssuer = apiHost, // ✅ Set Issuer dynamically
             ValidAudience = apiHost, // ✅ Set Audience dynamically
             IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtConfig["Secret"])),
             ClockSkew = TimeSpan.Zero // ✅ Prevents token expiration delays
@@ -92,29 +90,31 @@ app.MapGroup("/api/identity").MapIdentityApi<ApplicationUser>().WithTags("Identi
 
 app.UseEndpoints();
 
+using (var scope = app.Services.CreateScope())
+{
+    var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>();
+    var roles = new[] { "Admin", "User", "GuestUser", "HostUser" };
+
+    foreach (var role in roles)
+    {
+        if (!await roleManager.RoleExistsAsync(role))
+        {
+            await roleManager.CreateAsync(new IdentityRole(role));
+        }
+    }
+}
+
 app.Run();
 
 static string? GetConnectionString()
 {
-    foreach (DictionaryEntry env in Environment.GetEnvironmentVariables())
-    {
-        Console.WriteLine($"{env.Key}: {env.Value}");
-    }
+    foreach (DictionaryEntry env in Environment.GetEnvironmentVariables()) Console.WriteLine($"{env.Key}: {env.Value}");
     if (Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") == "Development")
-    {
         return Environment.GetEnvironmentVariable("HomxlyDevDb3");
-    }
     else if (Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") == "Production")
-    {
         return Environment.GetEnvironmentVariable("HomxlyProdDb");
-    }
     else if (Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") == "Local")
-    {
         return Environment.GetEnvironmentVariable("HomxlyLocalDb3");
-    }
     else
-    {
         return null;
-    }
-
 }

@@ -24,11 +24,23 @@ public class UserService(ApplicationDbContext dbContext, UserManager<Application
         var validUser = await userManager.GetUserAsync(claimsPrincipal);
         if (validUser is null) return null;
 
+        // ✅ Ensure roles are stored as a List<string>
+        var roles = new List<string>();
+        if (validUser.Email!.StartsWith("admin@"))
+        {
+            roles.Add("Admin");
+        }
+        else
+        {
+            roles.Add("User");
+        }
+
         var claims = new UserClaimsDto(
             validUser.Id,
             validUser.UserName!,
             validUser.Email!,
-            validUser.Email!.StartsWith("admin@") ? "Admin" : "User");
+            roles // ✅ Now passing a List<string> instead of a string
+        );
 
         return Convert.ToBase64String(Encoding.UTF8.GetBytes(claims.ToJson()));
     }

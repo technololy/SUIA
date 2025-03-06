@@ -44,8 +44,11 @@ public static class UserExtension
                 return null; // Essential fields are missing
             }
 
-            claimPairs.TryGetValue(ClaimTypes.Role, out var roles);
-
+            // ✅ Extract multiple roles properly (roles are usually stored as a semicolon-separated string)
+            var roles = claimPairs.TryGetValue(ClaimTypes.Role, out var value)
+                ? value.Split(';').ToList()  // ✅ Convert to List<string>
+                : [];
+            
             return new UserClaimsDto(id, userName, email, roles);
         }
         catch (Exception ex)
