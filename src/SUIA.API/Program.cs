@@ -1,6 +1,10 @@
 using System.Collections;
+using System.Diagnostics;
+using System.Text;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.IdentityModel.Tokens;
 using SUIA.API.Configuration;
 using SUIA.API.Data;
 
@@ -20,12 +24,46 @@ builder.Services.AddEntityFrameworkNpgsql()
         }
     );
 
-// builder.Services.AddDbContext<ApplicationDbContext>(o
-//     => o.UseSqlite(builder.Configuration.GetConnectionString("Default")));
-
 builder.Services.AddIdentityApiEndpoints<ApplicationUser>()
     .AddRoles<IdentityRole>()
     .AddEntityFrameworkStores<ApplicationDbContext>();
+
+
+    // ✅ Get the running domain dynamically
+var jwtConfig = builder.Configuration.GetSection("Jwt");
+var apiHost = "";
+if (Debugger.IsAttached)
+{
+    apiHost = "https://localhost:7035";
+}
+else if (builder.Environment.IsDevelopment())
+{
+    
+}
+else if (builder.Environment.IsProduction())
+{
+    
+}
+
+// ✅ Configure JWT Authentication
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(options =>
+    {
+        options.RequireHttpsMetadata = false; // ✅ Disable for local development
+        options.SaveToken = true;
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuer = true,
+            ValidateAudience = true,
+            ValidateLifetime = true,
+            ValidateIssuerSigningKey = true,
+            ValidIssuer = apiHost,  // ✅ Set Issuer dynamically
+            ValidAudience = apiHost, // ✅ Set Audience dynamically
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtConfig["Secret"])),
+            ClockSkew = TimeSpan.Zero // ✅ Prevents token expiration delays
+        };
+    });
+
 
 builder.Services.AddServices();
 builder.Services.AddEndpoints();
