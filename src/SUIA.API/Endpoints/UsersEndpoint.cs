@@ -1,6 +1,9 @@
-﻿using System.Security.Claims;
+﻿using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
+using System.Text;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.IdentityModel.Tokens;
 using SUIA.API.Contracts;
 using SUIA.API.Data;
 using SUIA.Shared.Models;
@@ -78,10 +81,12 @@ public sealed class UsersEndpoint(IUserService service) : IEndpoints
         if (result) return Results.NoContent();
         return Results.BadRequest("Failed to delete user.");
     }
-    private async Task<IResult> LoginUser(
+    private static async Task<IResult> LoginUser(
         [FromBody] LoginRequestDto model,
         [FromServices] UserManager<ApplicationUser> userManager,
-        [FromServices] SignInManager<ApplicationUser> signInManager)    
+        [FromServices] SignInManager<ApplicationUser> signInManager,
+        [FromServices] IConfiguration config,
+        HttpContext httpContext)    
     {
         var user = await userManager.FindByEmailAsync(model.Email);
         if (user is null) return Results.BadRequest(new { Message = "Invalid email or password." });
@@ -89,23 +94,42 @@ public sealed class UsersEndpoint(IUserService service) : IEndpoints
         var result = await signInManager.PasswordSignInAsync(user, model.Password, false, false);
         if (!result.Succeeded) return Results.BadRequest(new { Message = "Invalid login attempt." });
 
-        // Retrieve claims
-        var claims = await userManager.GetClaimsAsync(user);
+        // ✅ Retrieve claims
+        var userClaims = await userManager.GetClaimsAsync(user);
+        var claimsList = userClaims.Select(c => $"{c.Type}:{c.Value}").ToList();
 
-        return Results.Ok(new
+        var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(config["Jwt:Secret"]));
+        var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
+        var apiHost = $"{httpContext.Request.Scheme}://{httpContext.Request.Host}";
+
+        var token = new JwtSecurityToken(
+            //issuer: config["Jwt:Issuer"],
+            issuer: apiHost,
+            //audience: config["Jwt:Audience"],
+            audience: apiHost,
+            claims: userClaims,
+            expires: DateTime.UtcNow.AddHours(1),
+            signingCredentials: creds
+        );
+
+        var tokenString = new JwtSecurityTokenHandler().WriteToken(token);
+
+        var response = new LoginResponseDto("Bearer", tokenString, 3600, "refresh_token_placeholder")
         {
-            Message = "Login successful",
-            User = new
-            {
-                user.Id,
-                user.UserName,
-                user.Email,
-                user.Gender
-            },
-            Claims = claims.Select(c => new { c.Type, c.Value })
-        });
+            Claims = string.Join(",", claimsList) // ✅ Send claims as a string
+        };
+
+        return Results.Ok(CreateSuccessResult(response, "Login successful."));
+    }
+    private static ApiResults<T> CreateSuccessResult<T>(T data, string message = "Success")
+    {
+        return new ApiResults<T>(System.Net.HttpStatusCode.OK, data, message);
     }
 
+    private static ApiResults<T> CreateFailureResult<T>(string message)
+    {
+        return new ApiResults<T>(System.Net.HttpStatusCode.BadRequest, default, message);
+    }
     private async Task<IResult> RegisterUser(
         [FromBody] RegisterModel model,
         [FromServices] UserManager<ApplicationUser> userManager)
@@ -114,7 +138,9 @@ public sealed class UsersEndpoint(IUserService service) : IEndpoints
         {
             UserName = model.Username,
             Email = model.Email,
-            Gender = model.Gender
+            Gender = model.Gender ?? "NA",
+            FirstName = model.FirstName,
+            LastName = model.LastName,
         };
 
         var result = await userManager.CreateAsync(user, model.Password);

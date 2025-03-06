@@ -10,12 +10,12 @@ using System.Security.Claims;
 
 namespace SUIA.UI.Authentication;
 
-public class SUIAAuthenticationStateProvider(IJSRuntime jSRuntime, NavigationManager navigationManager, IAPIService api, StateManager stateManager) : AuthenticationStateProvider
+public class SUIAAuthenticationStateProvider(IJSRuntime jSRuntime, NavigationManager navigationManager, IWebAppApiService api, StateManager stateManager) : AuthenticationStateProvider
 {
     public override async Task<AuthenticationState> GetAuthenticationStateAsync()
     {
 
-        var identity = new ClaimsIdentity();
+        var identity = new ClaimsIdentity("SUIA Authentication");
         var session = await jSRuntime.InvokeAsync<string>("localStorage.getItem", "session");
         if (session is null) return new AuthenticationState(new ClaimsPrincipal(identity));
 
@@ -23,17 +23,18 @@ public class SUIAAuthenticationStateProvider(IJSRuntime jSRuntime, NavigationMan
         if (string.IsNullOrWhiteSpace(url) || url.StartsWith("login", StringComparison.OrdinalIgnoreCase))
             return new AuthenticationState(new ClaimsPrincipal(identity));
 
-        var userClaims = session.FromRawClaims();
+        var actualClaims = session.FromJson<LoginResponseDto>();
+        var userClaims = actualClaims?.Claims?.FromRawClaimsAsSchema();
         if (userClaims is null) return new AuthenticationState(new ClaimsPrincipal(identity));
 
-        if (await ValidateUser() == false) return new AuthenticationState(new ClaimsPrincipal(identity));
+        //if (await ValidateUser() == false) return new AuthenticationState(new ClaimsPrincipal(identity));
 
         identity = new ClaimsIdentity(
         [
             new Claim(ClaimTypes.NameIdentifier, userClaims.Id),
             new Claim(ClaimTypes.Name, userClaims.UserName),
             new Claim(ClaimTypes.Email, userClaims.Email),
-            new Claim(ClaimTypes.Role, userClaims.Roles!),
+            new Claim(ClaimTypes.Role, userClaims.Roles ?? ""),
             new Claim("IsAdmin", userClaims.Roles == "Admin" ? "true" : "false"),
         ],
         "SUIA Authentication");
@@ -61,6 +62,13 @@ public class SUIAAuthenticationStateProvider(IJSRuntime jSRuntime, NavigationMan
         await jSRuntime.InvokeVoidAsync("localStorage.setItem", "session", model.ToJson());
         NotifyAuthenticationStateChanged(GetAuthenticationStateAsync());        
     }  
+    
+    public async Task AfterLogin(LoginResponseDto model)
+    {
+        if (model is null) return;
+        await jSRuntime.InvokeVoidAsync("localStorage.setItem", "session", model.ToJson());
+        NotifyAuthenticationStateChanged(GetAuthenticationStateAsync());        
+    } 
 
     public async Task Logout()
     {

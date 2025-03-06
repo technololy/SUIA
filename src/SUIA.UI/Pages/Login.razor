@@ -1,6 +1,6 @@
 ﻿@layout Layout.NotAuthorized.EmptyLayout
 @inject AuthenticationStateProvider asp
-@inject IAPIService api
+@inject IWebAppApiService api
 @page "/"
 @page "/Login"
 
@@ -57,7 +57,7 @@
     protected override async Task OnInitializedAsync()
     {
         var user = await ((SUIAAuthenticationStateProvider)asp).GetAuthenticationStateAsync();
-        if (user is not null && user.User.Identity?.IsAuthenticated == true)
+        if (user is not null && user.User.Identity?.IsAuthenticated == true && user.User.Claims?.Count() > 0)
             be.Goto("Home");
         else
             await be.RemoveFromLocalStorage("session");
@@ -71,7 +71,7 @@
         var result = await api.PostAsync<LoginRequestDto, LoginResponseDto>(EndpointConstants.LOGIN, model);
         if (result?.IsSuccess == true)
         {            
-            await ((SUIAAuthenticationStateProvider)asp).Login(result.Data!);
+            await ((SUIAAuthenticationStateProvider)asp).AfterLogin(result.Data!);
             be.Goto("Home");
         }
         else

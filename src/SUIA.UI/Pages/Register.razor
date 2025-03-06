@@ -1,5 +1,5 @@
 ﻿@layout Layout.NotAuthorized.EmptyLayout
-@inject IAPIService api
+@inject IWebAppApiService api
 @page "/Register"
 
 <div style="display: flex; flex-direction: column; height: calc(100vh - 90px); place-content: center">
@@ -16,6 +16,8 @@
                     <div class="flex-col">
                         <Input Focus Id="userEmail" Type="text" Label="Email" @bind-Value="@model.Email" Placeholder="yourname@domain.com" Error="Email" />
                         <Input Focus Id="userName" Type="text" Label="UserName" @bind-Value="@model.Username" Placeholder="UserName" Error="UserName" />
+                        <Input Focus Id="firstName" Type="text" Label="First Name" @bind-Value="@model.FirstName" Placeholder="First Name" Error="FirstName" />
+                        <Input Focus Id="lastName" Type="text" Label="Last Name" @bind-Value="@model.LastName" Placeholder="Last Name" Error="LastName" />
                         <Input Type="password" Label="Password" @bind-Value="@model.Password" placeholder="password" Error="Password" />
                         <Input Type="password" Label="Confirm Password" @bind-Value="@model.ConfirmPassword" placeholder="password" Error="ConfirmPassword" />
                     </div>

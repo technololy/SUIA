@@ -1,4 +1,5 @@
-﻿using Microsoft.AspNetCore.Components;
+﻿using System.Diagnostics;
+using Microsoft.AspNetCore.Components;
 using Microsoft.JSInterop;
 using SUIA.Shared.Models;
 using SUIA.Shared.Utilities;
@@ -17,7 +18,7 @@ namespace SUIA.UI.Services;
 6. If response is Unauthorized, complete the request.
 */
 
-public sealed class APIService(HttpClient httpClient, Settings settings, IJSRuntime jSRuntime, NavigationManager navigationManager) : IAPIService
+public sealed class WebAppApiService(HttpClient httpClient, Settings settings, IJSRuntime jSRuntime, NavigationManager navigationManager) : IWebAppApiService
 {
     private bool isCheckingForRefreshToken, refreshTokenFailed, retryLastApiCall;
     public bool IsRefreshTokenFailed => refreshTokenFailed;
@@ -36,29 +37,38 @@ public sealed class APIService(HttpClient httpClient, Settings settings, IJSRunt
     private static void SetRequestBody<T>(T value, ref HttpRequestMessage message)
         => message.Content = new StringContent(value.ToJson(), Encoding.UTF8, "application/json");
 
-    private async Task<Results<TOutput>> ProcessResponse<TOutput>(HttpResponseMessage? response, CancellationToken cancellationToken)
+    private async Task<ApiResults<TOutput>> ProcessResponse<TOutput>(HttpResponseMessage? response, CancellationToken cancellationToken)
     {
         var session = await jSRuntime.InvokeAsync<string>("localStorage.getItem", "session");
         if (refreshTokenFailed || response is null) return default!;
         if (response.IsSuccessStatusCode)
         {
-            if (typeof(TOutput).Name is nameof(IEmpty))
+            Debug.WriteLine(await response.Content.ReadAsStringAsync(cancellationToken));
+
+            var name = typeof(TOutput).Name;
+            if (name is nameof(IEmpty))
             {
-                return new Results<TOutput>(response.StatusCode, default, null);
+                return new ApiResults<TOutput>(response.StatusCode, default, null);
             }
-            else if (typeof(TOutput).Name is nameof(String))
+            else if (name is nameof(String))
             {
                 var stringData = await response.Content.ReadAsStringAsync(cancellationToken);
-                return new Results<TOutput>(response.StatusCode, default, null, stringData);
+                return new ApiResults<TOutput>(response.StatusCode, default, null, stringData);
+            }
+            else if (name is nameof(ApiResults<TOutput>))
+            {
+                var outputData = await response.Content.ReadFromJsonAsync<ApiResults<TOutput>>(cancellationToken);
+                return new ApiResults<TOutput>(response.StatusCode, outputData.Data, null);
             }
             else
             {
-                var outputData = await response.Content.ReadFromJsonAsync<TOutput>(cancellationToken);
-                return new Results<TOutput>(response.StatusCode, outputData, null);
+                var outputData = await response.Content.ReadFromJsonAsync<ApiResults<TOutput>>(cancellationToken);
+                return new ApiResults<TOutput>(response.StatusCode, outputData.Data, null);
             }
         }
         else
-        {            
+        {     
+            Debug.WriteLine(await response.Content.ReadAsStringAsync(cancellationToken));
             if (response.StatusCode == HttpStatusCode.Unauthorized && isCheckingForRefreshToken == false)
             {
                 isCheckingForRefreshToken = true;
@@ -72,11 +82,11 @@ public sealed class APIService(HttpClient httpClient, Settings settings, IJSRunt
                 try
                 {
                     var validationProblem = await response.Content.ReadFromJsonAsync<ValidationProblem>(cancellationToken);
-                    return new Results<TOutput>(response.StatusCode, default, response.ReasonPhrase) { Errors = validationProblem };
+                    return new ApiResults<TOutput>(response.StatusCode, default, response.ReasonPhrase) { Errors = validationProblem };
                 }
                 catch
                 {
-                    return new Results<TOutput>(response.StatusCode, default, response.ReasonPhrase);
+                    return new ApiResults<TOutput>(response.StatusCode, default, response.ReasonPhrase);
                 }
             }
         }
@@ -117,7 +127,7 @@ public sealed class APIService(HttpClient httpClient, Settings settings, IJSRunt
         return;
     }
 
-    public async ValueTask<Results<TOutput>> GetAsync<TOutput>(string endpoints, CancellationToken cancellationToken = default)
+    public async ValueTask<ApiResults<TOutput>> GetAsync<TOutput>(string endpoints, CancellationToken cancellationToken = default)
     {
         retry:
         retryLastApiCall = false;
@@ -128,7 +138,7 @@ public sealed class APIService(HttpClient httpClient, Settings settings, IJSRunt
         return result;
     }    
 
-    public async ValueTask<Results<TOutput>> PostAsync<TInput, TOutput>(string endpoints, TInput requestBody, CancellationToken cancellationToken = default)
+    public async ValueTask<ApiResults<TOutput>> PostAsync<TInput, TOutput>(string endpoints, TInput requestBody, CancellationToken cancellationToken = default)
     {
         retry:
         retryLastApiCall = false;
@@ -140,7 +150,7 @@ public sealed class APIService(HttpClient httpClient, Settings settings, IJSRunt
         return result;
     }
 
-    public async ValueTask<Results<TOutput>> PutAsync<TInput, TOutput>(string endpoints, TInput requestBody, CancellationToken cancellationToken = default)
+    public async ValueTask<ApiResults<TOutput>> PutAsync<TInput, TOutput>(string endpoints, TInput requestBody, CancellationToken cancellationToken = default)
     {
         retry:
         retryLastApiCall = false;
@@ -151,7 +161,7 @@ public sealed class APIService(HttpClient httpClient, Settings settings, IJSRunt
         if (retryLastApiCall) goto retry;
         return result;
     }
-    public async ValueTask<Results<TOutput>> DeleteAsync<TOutput>(string endpoints, CancellationToken cancellationToken = default)
+    public async ValueTask<ApiResults<TOutput>> DeleteAsync<TOutput>(string endpoints, CancellationToken cancellationToken = default)
     {
         retry:
         retryLastApiCall = false;
@@ -162,9 +172,3 @@ public sealed class APIService(HttpClient httpClient, Settings settings, IJSRunt
         return result;
     }
 }
-
-public record Results<TOutput>(HttpStatusCode StatusCode, TOutput? Data, string? Message, string? StringValue = null)
-{
-    public bool IsSuccess => ((int)StatusCode) >= 200 && ((int)StatusCode) < 300;
-    public ValidationProblem? Errors { get; set; }
-};

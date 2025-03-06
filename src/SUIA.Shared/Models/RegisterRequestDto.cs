@@ -5,6 +5,8 @@ public class RegisterRequestDto : ModelValidator
     public string Password { get; set; } = default!;
     public string ConfirmPassword { get; set; } = default!;
     public string Username { get; set; } = default!;
+    public string FirstName { get; set; }
+    public string LastName { get; set; }
 
     public override bool IsValid()
     {

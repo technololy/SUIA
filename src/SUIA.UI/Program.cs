@@ -17,7 +17,7 @@ var settings = await client.GetFromJsonAsync<Settings>("appsettings.json");
 builder.Services.AddTransient(_ => client);
 builder.Services.AddAuthorizationCore();
 builder.Services.AddScoped<AuthenticationStateProvider, SUIAAuthenticationStateProvider>();
-builder.Services.AddScoped<IAPIService, APIService>();
+builder.Services.AddScoped<IWebAppApiService, WebAppApiService>();
 builder.Services.AddScoped(_ => new Settings(settings!.ApiEndpoint));
 
 builder.Services.AddSysinfocus("",false);
