@@ -69,7 +69,7 @@
         errors = model.GetErrors();
         if (!model.IsValid()) return;
         var result = await api.PostAsync<LoginRequestDto, LoginResponseDto>(EndpointConstants.LOGIN, model);
-        if (result.IsSuccess)
+        if (result?.IsSuccess == true)
         {            
             await ((SUIAAuthenticationStateProvider)asp).Login(result.Data!);
             be.Goto("Home");

@@ -11,12 +11,12 @@ namespace SUIA.API.Services;
 
 
 
-public class UserService(ApplicationDbContext dbContext, UserManager<IdentityUser> userManager) : IUserService
+public class UserService(ApplicationDbContext dbContext, UserManager<ApplicationUser> userManager) : IUserService
 {
-    public async ValueTask<IdentityUser[]> GetAll(CancellationToken cancellationToken)
+    public async ValueTask<ApplicationUser[]> GetAll(CancellationToken cancellationToken)
         => await dbContext.Users.ToArrayAsync(cancellationToken) ?? [];
 
-    public async ValueTask<IdentityUser?> GetById(string id, CancellationToken cancellationToken)
+    public async ValueTask<ApplicationUser?> GetById(string id, CancellationToken cancellationToken)
         => await dbContext.Users.FindAsync([id], cancellationToken: cancellationToken);
 
     public async ValueTask<string?> GetUserClaims(ClaimsPrincipal claimsPrincipal, CancellationToken cancellationToken)

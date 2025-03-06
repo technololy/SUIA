@@ -1,5 +1,6 @@
 ﻿using System.Security.Claims;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Mvc;
 using SUIA.API.Contracts;
 using SUIA.API.Data;
 using SUIA.Shared.Models;
@@ -22,6 +23,9 @@ public sealed class UsersEndpoint(IUserService service) : IEndpoints
         group.MapPut("/changePassword/{id}", UpdatePassword);
 
         group.MapDelete("/{id}", DeleteUser);
+        // New Authentication Endpoints
+        group.MapPost("/auth/login", LoginUser).AllowAnonymous();
+        group.MapPost("/auth/register", RegisterUser).AllowAnonymous();
     }
 
     private async Task<IResult> GetAllUsers(CancellationToken cancellationToken)
@@ -41,7 +45,7 @@ public sealed class UsersEndpoint(IUserService service) : IEndpoints
         return Results.Content(claims);        
     }
 
-    private async Task<IResult> LogoutUser(SignInManager<IdentityUser> signInManager, CancellationToken cancellationToken)
+    private async Task<IResult> LogoutUser(SignInManager<ApplicationUser> signInManager, CancellationToken cancellationToken)
     {
         await signInManager.SignOutAsync();
         return Results.Ok();
@@ -59,7 +63,7 @@ public sealed class UsersEndpoint(IUserService service) : IEndpoints
         return Results.BadRequest("Failed to update user.");
     }
 
-    private async Task<IResult> UpdatePassword(string id, ChangePasswordRequestDto request, ApplicationDbContext adbc, UserManager<IdentityUser> userManager, CancellationToken cancellationToken)
+    private async Task<IResult> UpdatePassword(string id, ChangePasswordRequestDto request, ApplicationDbContext adbc, UserManager<ApplicationUser> userManager, CancellationToken cancellationToken)
     {
         var user = await adbc.Users.FindAsync([id], cancellationToken: cancellationToken);
         if (user is null) return Results.NotFound();        
@@ -73,5 +77,60 @@ public sealed class UsersEndpoint(IUserService service) : IEndpoints
         var result = await service.DeleteById(id, cancellationToken);
         if (result) return Results.NoContent();
         return Results.BadRequest("Failed to delete user.");
+    }
+    private async Task<IResult> LoginUser(
+        [FromBody] LoginRequestDto model,
+        [FromServices] UserManager<ApplicationUser> userManager,
+        [FromServices] SignInManager<ApplicationUser> signInManager)    
+    {
+        var user = await userManager.FindByEmailAsync(model.Email);
+        if (user is null) return Results.BadRequest(new { Message = "Invalid email or password." });
+
+        var result = await signInManager.PasswordSignInAsync(user, model.Password, false, false);
+        if (!result.Succeeded) return Results.BadRequest(new { Message = "Invalid login attempt." });
+
+        // Retrieve claims
+        var claims = await userManager.GetClaimsAsync(user);
+
+        return Results.Ok(new
+        {
+            Message = "Login successful",
+            User = new
+            {
+                user.Id,
+                user.UserName,
+                user.Email,
+                user.Gender
+            },
+            Claims = claims.Select(c => new { c.Type, c.Value })
+        });
+    }
+
+    private async Task<IResult> RegisterUser(
+        [FromBody] RegisterModel model,
+        [FromServices] UserManager<ApplicationUser> userManager)
+    {
+        var user = new ApplicationUser
+        {
+            UserName = model.Username,
+            Email = model.Email,
+            Gender = model.Gender
+        };
+
+        var result = await userManager.CreateAsync(user, model.Password);
+        if (!result.Succeeded) return Results.BadRequest(result.Errors);
+
+        // Add user claims
+        var claims = new List<Claim>
+        {
+            new(ClaimTypes.NameIdentifier, user.Id),
+            new(ClaimTypes.Name, user.UserName),
+            new(ClaimTypes.Email, user.Email),
+            new("Gender", user.Gender) // Custom claim
+        };
+
+        await userManager.AddClaimsAsync(user, claims);
+
+        return Results.Ok(new { Message = "User registered successfully" });
     }
 }

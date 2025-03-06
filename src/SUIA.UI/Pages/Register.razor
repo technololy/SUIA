@@ -15,6 +15,7 @@
                 <CascadingValue Value="errors">
                     <div class="flex-col">
                         <Input Focus Id="userEmail" Type="text" Label="Email" @bind-Value="@model.Email" Placeholder="yourname@domain.com" Error="Email" />
+                        <Input Focus Id="userName" Type="text" Label="UserName" @bind-Value="@model.Username" Placeholder="UserName" Error="UserName" />
                         <Input Type="password" Label="Password" @bind-Value="@model.Password" placeholder="password" Error="Password" />
                         <Input Type="password" Label="Confirm Password" @bind-Value="@model.ConfirmPassword" placeholder="password" Error="ConfirmPassword" />
                     </div>
@@ -55,7 +56,7 @@
         errors = model.GetErrors();
         if (!model.IsValid()) return;
         var result = await api.PostAsync<RegisterRequestDto, IEmpty>(EndpointConstants.REGISTER, model);
-        if (result.IsSuccess)
+        if (result?.IsSuccess == true)
         {
             be.Goto("Login");
         }
